@@ -32,7 +32,6 @@ class BPP:
 
 
 def make_bpp1() -> BPP:
-    """BPP1: 500 items, 10 bins, weights i."""
     k = 500
     b = 10
     weights = [float(i) for i in range(1, k + 1)]
@@ -40,7 +39,6 @@ def make_bpp1() -> BPP:
 
 
 def make_bpp2() -> BPP:
-    """BPP2: 500 items, 50 bins, weights i^2 / 2."""
     k = 500
     b = 50
     weights = [ (i * i) / 2.0 for i in range(1, k + 1) ]
@@ -49,12 +47,12 @@ def make_bpp2() -> BPP:
 
 @dataclass
 class GAParams:
-    population_size: int  # p
-    pm: float             # mutation rate per gene
-    tournament_size: int  # t
-    pc: float = 0.8       # crossover rate (fixed)
-    elitism: int = 1      # number of elites (fixed)
-    max_evals: int = 10_000  # termination by fitness evaluations
+    population_size: int
+    pm: float
+    tournament_size: int
+    pc: float = 0.8
+    elitism: int = 1
+    max_evals: int = 10_000
 
 
 @dataclass
@@ -75,7 +73,6 @@ class TrialResult:
 
 
 class BinPackingGA:
-    """Minimal GA for balancing bin sums via assignments 1..b."""
     def __init__(self, problem: BPP, params: GAParams, rng: random.Random):
         self.problem = problem
         self.params = params
@@ -83,25 +80,20 @@ class BinPackingGA:
         self.k = problem.k_items
         self.b = problem.b_bins
         self.weights = problem.weights
-
-        # Evaluation counter
         self.evals_used = 0
 
         self.history: Dict[str, List[float]] = {"gen": [], "best": [], "mean": []}
 
     def random_chromosome(self) -> List[int]:
-        """Return a random chromosome with genes in [1..b]."""
         return [self.rng.randint(1, self.b) for _ in range(self.k)]
 
     def _bins_sums(self, chrom: List[int]) -> Tuple[float, float]:
-        """Return (min_sum, max_sum) of bin totals for a chromosome."""
         sums = [0.0] * self.b
         for i, bin_id in enumerate(chrom):
             sums[bin_id - 1] += self.weights[i]
         return (min(sums), max(sums))
 
     def fitness(self, chrom: List[int]) -> float:
-        """Compute fitness = 100 / (1 + d), with d = max_bin_sum - min_bin_sum."""
         min_sum, max_sum = self._bins_sums(chrom)
         d = max_sum - min_sum
         fit = 100.0 / (1.0 + d)
@@ -110,12 +102,12 @@ class BinPackingGA:
 
     def tournament_select(self, population: List[List[int]], fitnesses: List[float]) -> List[int]:
         t = self.params.tournament_size
-        best_idx = None
+        best_i = None
         for _ in range(t):
             i = self.rng.randrange(len(population))
-            if best_idx is None or fitnesses[i] > fitnesses[best_idx]:
-                best_idx = i
-        return population[best_idx][:]
+            if best_i is None or fitnesses[i] > fitnesses[best_i]:
+                best_i = i
+        return population[best_i][:]
 
     def uniform_crossover(self, p1: List[int], p2: List[int]) -> Tuple[List[int], List[int]]:
         c1 = p1[:]
@@ -130,100 +122,82 @@ class BinPackingGA:
         pm = self.params.pm
         for i in range(self.k):
             if self.rng.random() < pm:
-                # Randomly reassign to any valid bin (1..b)
                 chrom[i] = self.rng.randint(1, self.b)
 
     def run(self) -> Tuple[List[int], float, float, int, int]:
-        """Run one trial. Returns (best, best_fitness, best_d, generations, evals_used)."""
         p = self.params.population_size
         max_evals = self.params.max_evals
-        elite_n = self.params.elitism
+        n_elite = self.params.elitism
 
-        # Initialize population
-        population = [self.random_chromosome() for _ in range(p)]
-        fitnesses = [self.fitness(ind) for ind in population]
+        pop = [self.random_chromosome() for _ in range(p)]
+        fits = [self.fitness(ind) for ind in pop]
 
-        # Track best
-        best_idx = max(range(p), key=lambda i: fitnesses[i])
-        best = population[best_idx][:]
-        best_fit = fitnesses[best_idx]
-        best_min, best_max = self._bins_sums(best)
-        best_d = best_max - best_min
+        best_idx = max(range(p), key=lambda i: fits[i])
+        best = pop[best_idx][:]
+        best_fit = fits[best_idx]
+        mn, mx = self._bins_sums(best)
+        best_d = mx - mn
 
         self.history["gen"].append(0)
-        self.history["best"].append(max(fitnesses))
-        self.history["mean"].append(sum(fitnesses) / len(fitnesses))
+        self.history["best"].append(max(fits))
+        self.history["mean"].append(sum(fits) / len(fits))
 
-        generations = 0
+        gens = 0
 
-        # Stop if we already exhausted evals in initialization
         while self.evals_used < max_evals:
-            generations += 1
+            gens += 1
 
-            # Pick top elite_n
-            elite_indices = sorted(range(len(population)), key=lambda i: fitnesses[i], reverse=True)[:elite_n]
-            elites = [population[i][:] for i in elite_indices]
-            elite_fits = [fitnesses[i] for i in elite_indices]
+            elite_idx = sorted(range(len(pop)), key=lambda i: fits[i], reverse=True)[:n_elite]
+            elites = [pop[i][:] for i in elite_idx]
+            elite_fits = [fits[i] for i in elite_idx]
 
-            # Create next population
-            next_pop: List[List[int]] = []
-            next_fit: List[float] = []
+            new_pop: List[List[int]] = []
+            new_fit: List[float] = []
 
-            # Ensure space left for elites at the end
-            while len(next_pop) < p - elite_n and self.evals_used < max_evals:
-                # Parents
-                parent1 = self.tournament_select(population, fitnesses)
-                parent2 = self.tournament_select(population, fitnesses)
+            while len(new_pop) < p - n_elite and self.evals_used < max_evals:
+                p1 = self.tournament_select(pop, fits)
+                p2 = self.tournament_select(pop, fits)
 
-                # Crossover
-                child1, child2 = self.uniform_crossover(parent1, parent2)
+                c1, c2 = self.uniform_crossover(p1, p2)
 
-                # Mutation
-                self.mutate(child1)
-                self.mutate(child2)
+                self.mutate(c1)
+                self.mutate(c2)
 
-                # Evaluate children (respect eval budget)
-                f1 = self.fitness(child1)
-                if len(next_pop) < p - elite_n:
-                    next_pop.append(child1)
-                    next_fit.append(f1)
+                f1 = self.fitness(c1)
+                if len(new_pop) < p - n_elite:
+                    new_pop.append(c1)
+                    new_fit.append(f1)
 
                 if self.evals_used >= max_evals:
                     break
 
-                f2 = self.fitness(child2)
-                if len(next_pop) < p - elite_n:
-                    next_pop.append(child2)
-                    next_fit.append(f2)
+                f2 = self.fitness(c2)
+                if len(new_pop) < p - n_elite:
+                    new_pop.append(c2)
+                    new_fit.append(f2)
 
-            # If eval budget prevents filling, pad with elites (no new evals)
-            while len(next_pop) < p - elite_n:
-                # duplicate the best elite to keep size
-                next_pop.append(elites[0][:])
-                next_fit.append(elite_fits[0])
+            while len(new_pop) < p - n_elite:
+                new_pop.append(elites[0][:])
+                new_fit.append(elite_fits[0])
 
-            # Add elites at the end (carry fitness values)
-            population = next_pop + elites
-            fitnesses = next_fit + elite_fits
+            pop = new_pop + elites
+            fits = new_fit + elite_fits
 
-            # Update best
-            gen_best_idx = max(range(p), key=lambda i: fitnesses[i])
-            if fitnesses[gen_best_idx] > best_fit:
-                best = population[gen_best_idx][:]
-                best_fit = fitnesses[gen_best_idx]
-                mn, mx = self._bins_sums(best)  # not counted as a 'fitness' since we don't call fitness()
+            gbest_idx = max(range(p), key=lambda i: fits[i])
+            if fits[gbest_idx] > best_fit:
+                best = pop[gbest_idx][:]
+                best_fit = fits[gbest_idx]
+                mn, mx = self._bins_sums(best)
                 best_d = mx - mn
 
-            # Record per-generation stats
-            self.history["gen"].append(generations)
-            self.history["best"].append(max(fitnesses))
-            self.history["mean"].append(sum(fitnesses) / len(fitnesses))
+            self.history["gen"].append(gens)
+            self.history["best"].append(max(fits))
+            self.history["mean"].append(sum(fits) / len(fits))
 
-        return best, best_fit, best_d, generations, self.evals_used
+        return best, best_fit, best_d, gens, self.evals_used
 
 
 def derived_seed(master_seed: int, problem_id: int, setting_id: int, trial_index: int) -> int:
-    """Deterministic seed derivation across problems/settings/trials."""
     return master_seed + 10_000 * problem_id + 100 * setting_id + trial_index
 
 
@@ -250,9 +224,8 @@ def plot_history(history: Dict[str, List[float]], title: str, out_path: Path, sh
 
 
 def run_experiments(master_seed: int, csv_path: str, *, plot: bool = False, plot_dir: str = "plots", show: bool = False) -> List[TrialResult]:
-    problems = [make_bpp1(), make_bpp2()]  # problem_id is index (0, 1)
+    problems = [make_bpp1(), make_bpp2()]
 
-    # Settings (setting_id is index 0..3)
     settings: List[GAParams] = [
         GAParams(population_size=100, pm=0.01, tournament_size=3, pc=0.8, elitism=1, max_evals=10_000),
         GAParams(population_size=100, pm=0.05, tournament_size=3, pc=0.8, elitism=1, max_evals=10_000),
@@ -263,15 +236,15 @@ def run_experiments(master_seed: int, csv_path: str, *, plot: bool = False, plot
     n_trials = 5
     results: List[TrialResult] = []
 
-    best_per_config: Dict[Tuple[int, int], Tuple[float, Dict[str, List[float]], str, Path]] = {}
+    best_by_cfg: Dict[Tuple[int, int], Tuple[float, Dict[str, List[float]], str, Path]] = {}
 
-    for prob_id, problem in enumerate(problems):
-        for set_id, params in enumerate(settings):
-            for trial in range(n_trials):
-                seed = derived_seed(master_seed, prob_id, set_id, trial)
+    for pid, problem in enumerate(problems):
+        for sid, params in enumerate(settings):
+            for tr in range(n_trials):
+                seed = derived_seed(master_seed, pid, sid, tr)
                 rng = random.Random(seed)
                 ga = BinPackingGA(problem, params, rng)
-                best, best_fit, best_d, generations, evals_used = ga.run()
+                best, best_fit, best_d, gens, evals_used = ga.run()
 
                 results.append(TrialResult(
                     problem=problem.name,
@@ -281,30 +254,26 @@ def run_experiments(master_seed: int, csv_path: str, *, plot: bool = False, plot
                     pc=params.pc,
                     elitism=params.elitism,
                     max_evals=params.max_evals,
-                    trial_index=trial,
+                    trial_index=tr,
                     seed=seed,
                     best_fitness=best_fit,
                     best_d=best_d,
-                    generations=generations,
+                    generations=gens,
                     evals_used=evals_used,
                 ))
 
-                # Per-trial log (comment out if too noisy)
-                print(f"[{problem.name}] setting={set_id} trial={trial} seed={seed} "
-                      f"best_fitness={best_fit:.8f} best_d={best_d:.4f} "
-                      f"gens={generations} evals={evals_used}")
+                print(f"[{problem.name}] cfg={sid} tr={tr} seed={seed} "
+                      f"best={best_fit:.8f} d={best_d:.4f} gens={gens} evals={evals_used}")
 
-                # Track best trial for this configuration
                 if plot:
-                    key = (prob_id, set_id)
-                    prev = best_per_config.get(key)
+                    key = (pid, sid)
+                    prev = best_by_cfg.get(key)
                     if (prev is None) or (best_fit > prev[0]):
-                        fname = f"{problem.name.lower()}_set{set_id}_best.png"
+                        fname = f"{problem.name.lower()}_set{sid}_best.png"
                         out_path = Path(plot_dir) / fname
-                        title = f"{problem.name}, setting {set_id} — best trial (seed {seed}, trial {trial})"
-                        best_per_config[key] = (best_fit, ga.history.copy(), title, out_path)
+                        title = f"{problem.name}, setting {sid} — best trial (seed {seed}, trial {tr})"
+                        best_by_cfg[key] = (best_fit, ga.history.copy(), title, out_path)
 
-    # Write CSV
     fieldnames = list(asdict(results[0]).keys()) if results else []
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -312,9 +281,8 @@ def run_experiments(master_seed: int, csv_path: str, *, plot: bool = False, plot
         for r in results:
             writer.writerow(asdict(r))
 
-    # Plot only the best trial per configuration if requested
     if plot:
-        for (_prob_id, _set_id), (_fit, hist, title, out_path) in best_per_config.items():
+        for (_pid, _sid), (_fit, hist, title, out_path) in best_by_cfg.items():
             plot_history(hist, title, out_path, show=show)
 
     return results
@@ -325,14 +293,12 @@ def summarize(results: List[TrialResult]) -> None:
         print("No results to summarize.")
         return
 
-    # Group by (problem, pm, tournament_size)
     from collections import defaultdict
     groups: Dict[Tuple[str, float, int], List[TrialResult]] = defaultdict(list)
     for r in results:
         key = (r.problem, r.pm, r.tournament_size)
         groups[key].append(r)
 
-    # Print table header
     print("\n=== Summary (mean ± std over 5 trials) ===")
     print("Problem, pm, tournament, mean_best_fitness, std_best_fitness, mean_best_d, std_best_d")
     for key, rs in sorted(groups.items()):
@@ -346,12 +312,12 @@ def summarize(results: List[TrialResult]) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Genetic Algorithm for Bin Packing (BPP1 & BPP2)")
-    parser.add_argument("--master-seed", type=int, default=42, help="Master seed (default: 42)")
+    parser = argparse.ArgumentParser(description="Simple GA for toy BPPs")
+    parser.add_argument("--master-seed", type=int, default=42, help="Master seed")
     parser.add_argument("--csv", type=str, default="ga_bpp_results.csv", help="Output CSV path")
-    parser.add_argument("--plot", action="store_true", help="Plot fitness curve for the best trial per config")
-    parser.add_argument("--plot-dir", type=str, default="plots", help="Directory to save plots (default: plots)")
-    parser.add_argument("--show-plots", action="store_true", help="Show plots interactively (if supported)")
+    parser.add_argument("--plot", action="store_true", help="Plot best curves")
+    parser.add_argument("--plot-dir", type=str, default="plots", help="Plot dir")
+    parser.add_argument("--show-plots", action="store_true", help="Show plots")
     args = parser.parse_args()
 
     results = run_experiments(
