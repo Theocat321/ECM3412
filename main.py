@@ -19,7 +19,7 @@ import csv
 import random
 from pathlib import Path
 from dataclasses import dataclass, asdict
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict
 import matplotlib.pyplot as plt
 
 
@@ -263,14 +263,7 @@ def run_experiments(master_seed: int, csv_path: str, *, plot: bool = False, plot
     n_trials = 5
     results: List[TrialResult] = []
 
-    # Track the single best trial across all runs for plotting
-    best_plot_fit = float("-inf")
-    best_plot_history: Optional[Dict[str, List[float]]] = None
-    best_plot_title = ""
-    best_plot_path: Optional[Path] = None
-
-    if plot:
-        print("Plotting requested but matplotlib is not available. Install matplotlib to enable plots.")
+    best_per_config: Dict[Tuple[int, int], Tuple[float, Dict[str, List[float]], str, Path]] = {}
 
     for prob_id, problem in enumerate(problems):
         for set_id, params in enumerate(settings):
@@ -301,13 +294,15 @@ def run_experiments(master_seed: int, csv_path: str, *, plot: bool = False, plot
                       f"best_fitness={best_fit:.8f} best_d={best_d:.4f} "
                       f"gens={generations} evals={evals_used}")
 
-                # Track best trial for plotting (only highest best_fitness)
-                if plot and best_fit > best_plot_fit:
-                    best_plot_fit = best_fit
-                    best_plot_history = ga.history.copy()
-                    fname = f"BEST_{problem.name}_set{set_id}_trial{trial}_seed{seed}.png"
-                    best_plot_path = Path(plot_dir) / fname
-                    best_plot_title = f"Best Trial | {problem.name} | set={set_id} trial={trial} seed={seed}"
+                # Track best trial for this configuration
+                if plot:
+                    key = (prob_id, set_id)
+                    prev = best_per_config.get(key)
+                    if (prev is None) or (best_fit > prev[0]):
+                        fname = f"{problem.name.lower()}_set{set_id}_best.png"
+                        out_path = Path(plot_dir) / fname
+                        title = f"{problem.name}, setting {set_id} — best trial (seed {seed}, trial {trial})"
+                        best_per_config[key] = (best_fit, ga.history.copy(), title, out_path)
 
     # Write CSV
     fieldnames = list(asdict(results[0]).keys()) if results else []
@@ -317,9 +312,10 @@ def run_experiments(master_seed: int, csv_path: str, *, plot: bool = False, plot
         for r in results:
             writer.writerow(asdict(r))
 
-    # Plot only the single best trial if requested
-    if plot and best_plot_history is not None and best_plot_path is not None:
-        plot_history(best_plot_history, best_plot_title, best_plot_path, show=show)
+    # Plot only the best trial per configuration if requested
+    if plot:
+        for (_prob_id, _set_id), (_fit, hist, title, out_path) in best_per_config.items():
+            plot_history(hist, title, out_path, show=show)
 
     return results
 
@@ -353,7 +349,7 @@ def main():
     parser = argparse.ArgumentParser(description="Genetic Algorithm for Bin Packing (BPP1 & BPP2)")
     parser.add_argument("--master-seed", type=int, default=42, help="Master seed (default: 42)")
     parser.add_argument("--csv", type=str, default="ga_bpp_results.csv", help="Output CSV path")
-    parser.add_argument("--plot", action="store_true", help="Plot fitness curve for the single best trial only")
+    parser.add_argument("--plot", action="store_true", help="Plot fitness curve for the best trial per config")
     parser.add_argument("--plot-dir", type=str, default="plots", help="Directory to save plots (default: plots)")
     parser.add_argument("--show-plots", action="store_true", help="Show plots interactively (if supported)")
     args = parser.parse_args()
