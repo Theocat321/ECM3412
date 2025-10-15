@@ -244,7 +244,7 @@ def run_experiments(master_seed: int, csv_path: str, *, plot: bool = False, plot
                 seed = derived_seed(master_seed, pid, sid, tr)
                 rng = random.Random(seed)
                 ga = BinPackingGA(problem, params, rng)
-                best, best_fit, best_d, gens, evals_used = ga.run()
+                _, best_fit, best_d, gens, evals_used = ga.run()
 
                 results.append(TrialResult(
                     problem=problem.name,
@@ -312,7 +312,7 @@ def summarize(results: List[TrialResult]) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Simple GA for toy BPPs")
+    parser = argparse.ArgumentParser(description="Simple GA for BPPs")
     parser.add_argument("--master-seed", type=int, default=42, help="Master seed")
     parser.add_argument("--csv", type=str, default="ga_bpp_results.csv", help="Output CSV path")
     parser.add_argument("--plot", action="store_true", help="Plot best curves")
