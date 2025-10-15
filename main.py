@@ -312,7 +312,7 @@ def summarize(results: List[TrialResult]) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Simple GA for BPPs")
+    parser = argparse.ArgumentParser(description="GA for BPPs")
     parser.add_argument("--master-seed", type=int, default=42, help="Master seed")
     parser.add_argument("--csv", type=str, default="ga_bpp_results.csv", help="Output CSV path")
     parser.add_argument("--plot", action="store_true", help="Plot best curves")
