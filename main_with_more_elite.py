@@ -1,5 +1,5 @@
 """
-Small genetic algorithm for a toy bin-packing task.
+Small genetic algorithm for a toy bin-packing task (elite=10 variant).
 
 Two variants...
 - BPP1: 500 items, 10 bins, weights i
@@ -8,19 +8,19 @@ Two variants...
 Chromosome encodes bin assignments...
 fitness = 100 / (1 + (max_bin_sum - min_bin_sum)).
 
+This variant keeps the top 10 elites each generation (instead of 1).
+
 Usage:
-  python main.py
-  python main.py --master-seed 123 --csv ga_out.csv
+  python main_with_more_elite.py
+  python main_with_more_elite.py --master-seed 123 --csv ga_out.csv
 """
 
 from __future__ import annotations
 import argparse
 import csv
 import random
-from pathlib import Path
 from dataclasses import dataclass, asdict
-from typing import List, Tuple, Dict, Optional
-import matplotlib.pyplot as plt
+from typing import List, Tuple, Dict
 
 
 @dataclass(frozen=True)
@@ -53,7 +53,7 @@ class GAParams:
     pm: float             # mutation rate per gene
     tournament_size: int  # t
     pc: float = 0.8       # crossover rate (fixed)
-    elitism: int = 1      # number of elites (fixed)
+    elitism: int = 10     # number of elites (10 instead of 1)
     max_evals: int = 10_000  # termination by fitness evaluations
 
 
@@ -86,8 +86,6 @@ class BinPackingGA:
 
         # Evaluation counter
         self.evals_used = 0
-
-        self.history: Dict[str, List[float]] = {"gen": [], "best": [], "mean": []}
 
     def random_chromosome(self) -> List[int]:
         """Return a random chromosome with genes in [1..b]."""
@@ -150,17 +148,13 @@ class BinPackingGA:
         best_min, best_max = self._bins_sums(best)
         best_d = best_max - best_min
 
-        self.history["gen"].append(0)
-        self.history["best"].append(max(fitnesses))
-        self.history["mean"].append(sum(fitnesses) / len(fitnesses))
-
         generations = 0
 
         # Stop if we already exhausted evals in initialization
         while self.evals_used < max_evals:
             generations += 1
 
-            # Pick top elite_n
+            # Pick top elite_n (10 in this variant)
             elite_indices = sorted(range(len(population)), key=lambda i: fitnesses[i], reverse=True)[:elite_n]
             elites = [population[i][:] for i in elite_indices]
             elite_fits = [fitnesses[i] for i in elite_indices]
@@ -214,11 +208,6 @@ class BinPackingGA:
                 mn, mx = self._bins_sums(best)  # not counted as a 'fitness' since we don't call fitness()
                 best_d = mx - mn
 
-            # Record per-generation stats
-            self.history["gen"].append(generations)
-            self.history["best"].append(max(fitnesses))
-            self.history["mean"].append(sum(fitnesses) / len(fitnesses))
-
         return best, best_fit, best_d, generations, self.evals_used
 
 
@@ -227,50 +216,19 @@ def derived_seed(master_seed: int, problem_id: int, setting_id: int, trial_index
     return master_seed + 10_000 * problem_id + 100 * setting_id + trial_index
 
 
-def plot_history(history: Dict[str, List[float]], title: str, out_path: Path, show: bool = False) -> None:
-    gens = history.get("gen", [])
-    best = history.get("best", [])
-    mean = history.get("mean", [])
-    if not gens:
-        return
-    plt.figure(figsize=(8, 5))
-    plt.plot(gens, best, label="best fitness", color="tab:blue")
-    plt.plot(gens, mean, label="mean fitness", color="tab:orange", alpha=0.8)
-    plt.xlabel("Generation")
-    plt.ylabel("Fitness")
-    plt.title(title)
-    plt.grid(True, alpha=0.3)
-    plt.legend()
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.tight_layout()
-    plt.savefig(str(out_path))
-    if show:
-        plt.show()
-    plt.close()
-
-
-def run_experiments(master_seed: int, csv_path: str, *, plot: bool = False, plot_dir: str = "plots", show: bool = False) -> List[TrialResult]:
+def run_experiments(master_seed: int, csv_path: str) -> List[TrialResult]:
     problems = [make_bpp1(), make_bpp2()]  # problem_id is index (0, 1)
 
     # Settings (setting_id is index 0..3)
     settings: List[GAParams] = [
-        GAParams(population_size=100, pm=0.01, tournament_size=3, pc=0.8, elitism=1, max_evals=10_000),
-        GAParams(population_size=100, pm=0.05, tournament_size=3, pc=0.8, elitism=1, max_evals=10_000),
-        GAParams(population_size=100, pm=0.01, tournament_size=7, pc=0.8, elitism=1, max_evals=10_000),
-        GAParams(population_size=100, pm=0.05, tournament_size=7, pc=0.8, elitism=1, max_evals=10_000),
+        GAParams(population_size=100, pm=0.01, tournament_size=3, pc=0.8, elitism=10, max_evals=10_000),
+        GAParams(population_size=100, pm=0.05, tournament_size=3, pc=0.8, elitism=10, max_evals=10_000),
+        GAParams(population_size=100, pm=0.01, tournament_size=7, pc=0.8, elitism=10, max_evals=10_000),
+        GAParams(population_size=100, pm=0.05, tournament_size=7, pc=0.8, elitism=10, max_evals=10_000),
     ]
 
     n_trials = 5
     results: List[TrialResult] = []
-
-    # Track the single best trial across all runs for plotting
-    best_plot_fit = float("-inf")
-    best_plot_history: Optional[Dict[str, List[float]]] = None
-    best_plot_title = ""
-    best_plot_path: Optional[Path] = None
-
-    if plot:
-        print("Plotting requested but matplotlib is not available. Install matplotlib to enable plots.")
 
     for prob_id, problem in enumerate(problems):
         for set_id, params in enumerate(settings):
@@ -301,14 +259,6 @@ def run_experiments(master_seed: int, csv_path: str, *, plot: bool = False, plot
                       f"best_fitness={best_fit:.8f} best_d={best_d:.4f} "
                       f"gens={generations} evals={evals_used}")
 
-                # Track best trial for plotting (only highest best_fitness)
-                if plot and best_fit > best_plot_fit:
-                    best_plot_fit = best_fit
-                    best_plot_history = ga.history.copy()
-                    fname = f"BEST_{problem.name}_set{set_id}_trial{trial}_seed{seed}.png"
-                    best_plot_path = Path(plot_dir) / fname
-                    best_plot_title = f"Best Trial | {problem.name} | set={set_id} trial={trial} seed={seed}"
-
     # Write CSV
     fieldnames = list(asdict(results[0]).keys()) if results else []
     with open(csv_path, "w", newline="") as f:
@@ -316,10 +266,6 @@ def run_experiments(master_seed: int, csv_path: str, *, plot: bool = False, plot
         writer.writeheader()
         for r in results:
             writer.writerow(asdict(r))
-
-    # Plot only the single best trial if requested
-    if plot and best_plot_history is not None and best_plot_path is not None:
-        plot_history(best_plot_history, best_plot_title, best_plot_path, show=show)
 
     return results
 
@@ -350,21 +296,12 @@ def summarize(results: List[TrialResult]) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Genetic Algorithm for Bin Packing (BPP1 & BPP2)")
+    parser = argparse.ArgumentParser(description="Genetic Algorithm for Bin Packing (BPP1 & BPP2) — elite=10")
     parser.add_argument("--master-seed", type=int, default=42, help="Master seed (default: 42)")
     parser.add_argument("--csv", type=str, default="ga_bpp_results.csv", help="Output CSV path")
-    parser.add_argument("--plot", action="store_true", help="Plot fitness curve for the single best trial only")
-    parser.add_argument("--plot-dir", type=str, default="plots", help="Directory to save plots (default: plots)")
-    parser.add_argument("--show-plots", action="store_true", help="Show plots interactively (if supported)")
     args = parser.parse_args()
 
-    results = run_experiments(
-        master_seed=args.master_seed,
-        csv_path=args.csv,
-        plot=args.plot,
-        plot_dir=args.plot_dir,
-        show=args.show_plots,
-    )
+    results = run_experiments(master_seed=args.master_seed, csv_path=args.csv)
     summarize(results)
 
     print(f"\nAll trial results written to: {args.csv}")
@@ -372,3 +309,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
