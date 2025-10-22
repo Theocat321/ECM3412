@@ -1,19 +1,28 @@
 """
 Small genetic algorithm for a toy bin-packing task.
 
-Two variants...
-- BPP1: 500 items, 10 bins, weights i
-- BPP2: 500 items, 50 bins, weights i^2 / 2
+I've used a class based approach to make the code super easy to read, modify, and experiment with.
 
-Chromosome encodes bin assignments...
-fitness = 100 / (1 + (max_bin_sum - min_bin_sum)).
+Dataclasses are used for code readability! Learnt from the Django Module.
+
+Problems:
+- BPP1: 500 items, 10 bins, weights w_i = i
+- BPP2: 500 items, 50 bins, weights w_i = i^2 / 2
+
+Chromosome:
+- integer list of length k; each gene in [1..b] assigns item i -> bin gene[i].
+
+Fitness:
+- fitness = 100 / (1 + d), with d = (heaviest bin sum) - (lightest bin sum)
 
 Usage:
   python main.py
   python main.py --master-seed 123 --csv ga_out.csv
+
+TODO
+- Completed!
 """
 
-from __future__ import annotations
 import argparse
 import csv
 import random
@@ -48,20 +57,20 @@ def make_bpp2() -> BPP:
 @dataclass
 class GAParams:
     population_size: int
-    pm: float
+    mutation_rate_per_gene: float
     tournament_size: int
-    pc: float = 0.8
+    cross_over_rate: float = 0.8
     elitism: int = 1
-    max_evals: int = 10_000
+    max_evals: int = 10000
 
 
 @dataclass
 class TrialResult:
     problem: str
     population_size: int
-    pm: float
+    mutation_rate_per_gene: float
     tournament_size: int
-    pc: float
+    cross_over_rate: float
     elitism: int
     max_evals: int
     trial_index: int
@@ -85,10 +94,14 @@ class BinPackingGA:
         self.history: Dict[str, List[float]] = {"gen": [], "best": [], "mean": []}
 
     def random_chromosome(self) -> List[int]:
-        return [self.rng.randint(1, self.b) for _ in range(self.k)]
+        chrom: List[int] = []
+        for _ in range(self.k):
+            bin_id = self.rng.randint(1, self.b)
+            chrom.append(bin_id)
+        return chrom
 
     def _bins_sums(self, chrom: List[int]) -> Tuple[float, float]:
-        sums = [0.0] * self.b
+        sums = [0] * self.b
         for i, bin_id in enumerate(chrom):
             sums[bin_id - 1] += self.weights[i]
         return (min(sums), max(sums))
@@ -112,16 +125,16 @@ class BinPackingGA:
     def uniform_crossover(self, p1: List[int], p2: List[int]) -> Tuple[List[int], List[int]]:
         c1 = p1[:]
         c2 = p2[:]
-        if self.rng.random() < self.params.pc:
+        if self.rng.random() < self.params.cross_over_rate:
             for i in range(self.k):
                 if self.rng.random() < 0.5:
                     c1[i], c2[i] = c2[i], c1[i]
         return c1, c2
 
     def mutate(self, chrom: List[int]) -> None:
-        pm = self.params.pm
+        mutation_rate_per_gene = self.params.mutation_rate_per_gene
         for i in range(self.k):
-            if self.rng.random() < pm:
+            if self.rng.random() < mutation_rate_per_gene:
                 chrom[i] = self.rng.randint(1, self.b)
 
     def run(self) -> Tuple[List[int], float, float, int, int]:
@@ -202,6 +215,9 @@ def derived_seed(master_seed: int, problem_id: int, setting_id: int, trial_index
 
 
 def plot_history(history: Dict[str, List[float]], title: str, out_path: Path, show: bool = False) -> None:
+    """
+    Extra function used to plot for the report
+    """
     gens = history.get("gen", [])
     best = history.get("best", [])
     mean = history.get("mean", [])
@@ -227,10 +243,10 @@ def run_experiments(master_seed: int, csv_path: str, *, plot: bool = False, plot
     problems = [make_bpp1(), make_bpp2()]
 
     settings: List[GAParams] = [
-        GAParams(population_size=100, pm=0.01, tournament_size=3, pc=0.8, elitism=1, max_evals=10_000),
-        GAParams(population_size=100, pm=0.05, tournament_size=3, pc=0.8, elitism=1, max_evals=10_000),
-        GAParams(population_size=100, pm=0.01, tournament_size=7, pc=0.8, elitism=1, max_evals=10_000),
-        GAParams(population_size=100, pm=0.05, tournament_size=7, pc=0.8, elitism=1, max_evals=10_000),
+        GAParams(population_size=100, mutation_rate_per_gene=0.01, tournament_size=3, cross_over_rate=0.8, elitism=1, max_evals=10_000),
+        GAParams(population_size=100, mutation_rate_per_gene=0.05, tournament_size=3, cross_over_rate=0.8, elitism=1, max_evals=10_000),
+        GAParams(population_size=100, mutation_rate_per_gene=0.01, tournament_size=7, cross_over_rate=0.8, elitism=1, max_evals=10_000),
+        GAParams(population_size=100, mutation_rate_per_gene=0.05, tournament_size=7, cross_over_rate=0.8, elitism=1, max_evals=10_000),
     ]
 
     n_trials = 5
@@ -249,9 +265,9 @@ def run_experiments(master_seed: int, csv_path: str, *, plot: bool = False, plot
                 results.append(TrialResult(
                     problem=problem.name,
                     population_size=params.population_size,
-                    pm=params.pm,
+                    mutation_rate_per_gene=params.mutation_rate_per_gene,
                     tournament_size=params.tournament_size,
-                    pc=params.pc,
+                    cross_over_rate=params.cross_over_rate,
                     elitism=params.elitism,
                     max_evals=params.max_evals,
                     trial_index=tr,
@@ -289,6 +305,9 @@ def run_experiments(master_seed: int, csv_path: str, *, plot: bool = False, plot
 
 
 def summarize(results: List[TrialResult]) -> None:
+    """
+    Output to terminal the summary.
+    """
     if not results:
         print("No results to summarize.")
         return
@@ -296,11 +315,11 @@ def summarize(results: List[TrialResult]) -> None:
     from collections import defaultdict
     groups: Dict[Tuple[str, float, int], List[TrialResult]] = defaultdict(list)
     for r in results:
-        key = (r.problem, r.pm, r.tournament_size)
+        key = (r.problem, r.mutation_rate_per_gene, r.tournament_size)
         groups[key].append(r)
 
-    print("\n=== Summary (mean ± std over 5 trials) ===")
-    print("Problem, pm, tournament, mean_best_fitness, std_best_fitness, mean_best_d, std_best_d")
+    print("\n--- Summary ---")
+    print("Problem, mutation_rate_per_gene, tournament, mean_best_fitness, std_best_fitness, mean_best_d, std_best_d")
     for key, rs in sorted(groups.items()):
         bf = [x.best_fitness for x in rs]
         bd = [x.best_d for x in rs]
