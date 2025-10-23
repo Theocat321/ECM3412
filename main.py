@@ -26,6 +26,7 @@ TODO
 import argparse
 import csv
 import random
+from collections import defaultdict
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from typing import List, Tuple, Dict
@@ -57,7 +58,7 @@ def make_bpp2() -> BPP:
 @dataclass
 class GAParams:
     population_size: int
-    mutation_rate_per_gene: float
+    mutation_rate_per_gene: float # same as pm in spec (easier to read)
     tournament_size: int
     cross_over_rate: float = 0.8
     elitism: int = 1
@@ -93,13 +94,6 @@ class BinPackingGA:
 
         self.history: Dict[str, List[float]] = {"gen": [], "best": [], "mean": []}
 
-    def random_chromosome(self) -> List[int]:
-        chrom: List[int] = []
-        for _ in range(self.k):
-            bin_id = self.rng.randint(1, self.b)
-            chrom.append(bin_id)
-        return chrom
-
     def _bins_sums(self, chrom: List[int]) -> Tuple[float, float]:
         sums = [0] * self.b
         for i, bin_id in enumerate(chrom):
@@ -113,7 +107,7 @@ class BinPackingGA:
         self.evals_used += 1
         return fit
 
-    def tournament_select(self, population: List[List[int]], fitnesses: List[float]) -> List[int]:
+    def select_tournament(self, population: List[List[int]], fitnesses: List[float]) -> List[int]:
         t = self.params.tournament_size
         best_i = None
         for _ in range(t):
@@ -137,7 +131,16 @@ class BinPackingGA:
             if self.rng.random() < mutation_rate_per_gene:
                 chrom[i] = self.rng.randint(1, self.b)
 
+    def random_chromosome(self) -> List[int]:
+        chrom: List[int] = []
+        for _ in range(self.k):
+            bin_id = self.rng.randint(1, self.b)
+            chrom.append(bin_id)
+        return chrom
+
     def run(self) -> Tuple[List[int], float, float, int, int]:
+        gens = 0
+
         p = self.params.population_size
         max_evals = self.params.max_evals
         n_elite = self.params.elitism
@@ -155,21 +158,31 @@ class BinPackingGA:
         self.history["best"].append(max(fits))
         self.history["mean"].append(sum(fits) / len(fits))
 
-        gens = 0
-
         while self.evals_used < max_evals:
             gens += 1
 
-            elite_idx = sorted(range(len(pop)), key=lambda i: fits[i], reverse=True)[:n_elite]
-            elites = [pop[i][:] for i in elite_idx]
-            elite_fits = [fits[i] for i in elite_idx]
+            indices = list(range(len(pop)))
+            sorted_indices = sorted(indices, key=lambda i: fits[i], reverse=True)
+            elite_idx = sorted_indices[:n_elite]
+
+            # Copy the elite chromosomes from the population
+            elites = []
+            for i in elite_idx:
+                elites.append(pop[i][:]) # create copy of each 
+
+            # Store the fitness values of the elites
+            elite_fits = []
+            for i in elite_idx:
+                elite_fits.append(fits[i])
+
 
             new_pop: List[List[int]] = []
             new_fit: List[float] = []
 
+            # Generate new individuals until we fill the population (excluding elites)
             while len(new_pop) < p - n_elite and self.evals_used < max_evals:
-                p1 = self.tournament_select(pop, fits)
-                p2 = self.tournament_select(pop, fits)
+                p1 = self.select_tournament(pop, fits)
+                p2 = self.select_tournament(pop, fits)
 
                 c1, c2 = self.uniform_crossover(p1, p2)
 
@@ -189,14 +202,17 @@ class BinPackingGA:
                     new_pop.append(c2)
                     new_fit.append(f2)
 
+            # If we have an odd number and one spot left, fill it with the best elite
             while len(new_pop) < p - n_elite:
                 new_pop.append(elites[0][:])
                 new_fit.append(elite_fits[0])
 
+            # Create the new population
             pop = new_pop + elites
             fits = new_fit + elite_fits
-
             gbest_idx = max(range(p), key=lambda i: fits[i])
+
+            # Update overall best if needed
             if fits[gbest_idx] > best_fit:
                 best = pop[gbest_idx][:]
                 best_fit = fits[gbest_idx]
@@ -242,6 +258,7 @@ def plot_history(history: Dict[str, List[float]], title: str, out_path: Path, sh
 def run_experiments(master_seed: int, csv_path: str, *, plot: bool = False, plot_dir: str = "plots", show: bool = False) -> List[TrialResult]:
     problems = [make_bpp1(), make_bpp2()]
 
+    # Different GA parameter settings
     settings: List[GAParams] = [
         GAParams(population_size=100, mutation_rate_per_gene=0.01, tournament_size=3, cross_over_rate=0.8, elitism=1, max_evals=10_000),
         GAParams(population_size=100, mutation_rate_per_gene=0.05, tournament_size=3, cross_over_rate=0.8, elitism=1, max_evals=10_000),
@@ -254,6 +271,7 @@ def run_experiments(master_seed: int, csv_path: str, *, plot: bool = False, plot
 
     best_by_cfg: Dict[Tuple[int, int], Tuple[float, Dict[str, List[float]], str, Path]] = {}
 
+    # Actual Experiment run
     for pid, problem in enumerate(problems):
         for sid, params in enumerate(settings):
             for tr in range(n_trials):
@@ -281,6 +299,7 @@ def run_experiments(master_seed: int, csv_path: str, *, plot: bool = False, plot
                 print(f"[{problem.name}] cfg={sid} tr={tr} seed={seed} "
                       f"best={best_fit:.8f} d={best_d:.4f} gens={gens} evals={evals_used}")
 
+                # If we're graphinh, keep track
                 if plot:
                     key = (pid, sid)
                     prev = best_by_cfg.get(key)
@@ -312,7 +331,6 @@ def summarize(results: List[TrialResult]) -> None:
         print("No results to summarize.")
         return
 
-    from collections import defaultdict
     groups: Dict[Tuple[str, float, int], List[TrialResult]] = defaultdict(list)
     for r in results:
         key = (r.problem, r.mutation_rate_per_gene, r.tournament_size)
