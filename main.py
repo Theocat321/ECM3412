@@ -340,15 +340,16 @@ def summarize(results: List[TrialResult]) -> None:
         groups[key].append(r)
 
     print("\n--- Summary ---")
-    print("Problem, mutation_rate_per_gene, tournament, mean_best_fitness, std_best_fitness, mean_best_d, std_best_d")
+    print("Problem, mutation_rate_per_gene, tournament, mean_best_fitness, std_best_fitness, max_best_fitness, mean_best_d, std_best_d")
     for key, rs in sorted(groups.items()):
         bf = [x.best_fitness for x in rs]
         bd = [x.best_d for x in rs]
         mean_bf = sum(bf) / len(bf)
         mean_bd = sum(bd) / len(bd)
+        max_bf = max(bf) if bf else 0.0
         std_bf = (sum((x - mean_bf) ** 2 for x in bf) / (len(bf) - 1)) ** 0.5 if len(bf) > 1 else 0.0
         std_bd = (sum((x - mean_bd) ** 2 for x in bd) / (len(bd) - 1)) ** 0.5 if len(bd) > 1 else 0.0
-        print(f"{key[0]}, {key[1]:.3f}, {key[2]}, {mean_bf:.8f}, {std_bf:.8f}, {mean_bd:.4f}, {std_bd:.4f}")
+        print(f"{key[0]}, {key[1]:.3f}, {key[2]}, {mean_bf:.8f}, {std_bf:.8f}, {max_bf:.8f}, {mean_bd:.4f}, {std_bd:.4f}")
 
 
 def main():
