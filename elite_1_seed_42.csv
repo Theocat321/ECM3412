@@ -1,4 +1,4 @@
-problem,population_size,pm,tournament_size,pc,elitism,max_evals,trial_index,seed,best_fitness,best_d,generations,evals_used
+problem,population_size,mutation_rate_per_gene,tournament_size,cross_over_rate,elitism,max_evals,trial_index,seed,best_fitness,best_d,generations,evals_used
 BPP1,100,0.01,3,0.8,1,10000,0,42,0.21413276231263384,466.0,99,10000
 BPP1,100,0.01,3,0.8,1,10000,1,43,0.23923444976076555,417.0,99,10000
 BPP1,100,0.01,3,0.8,1,10000,2,44,0.18832391713747645,530.0,99,10000
