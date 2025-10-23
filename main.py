@@ -3,8 +3,6 @@ Small genetic algorithm for a toy bin-packing task.
 
 I've used a class based approach to make the code super easy to read, modify, and experiment with.
 
-Dataclasses are used for code readability! Learnt from the Django Module.
-
 Problems:
 - BPP1: 500 items, 10 bins, weights w_i = i
 - BPP2: 500 items, 50 bins, weights w_i = i^2 / 2
@@ -28,62 +26,102 @@ import csv
 import random
 from collections import defaultdict
 from pathlib import Path
-from dataclasses import dataclass, asdict
-from typing import List, Tuple, Dict
 import matplotlib.pyplot as plt
 
 
-@dataclass(frozen=True)
 class BPP:
-    name: str
-    k_items: int
-    b_bins: int
-    weights: List[float]
+    def __init__(self, name, k_items, b_bins, weights):
+        self.name = name
+        self.k_items = k_items
+        self.b_bins = b_bins
+        self.weights = weights
 
 
-def make_bpp1() -> BPP:
+def bpp1():
     k = 500
     b = 10
     weights = [float(i) for i in range(1, k + 1)]
     return BPP("BPP1", k, b, weights)
 
 
-def make_bpp2() -> BPP:
+def bpp2():
     k = 500
     b = 50
     weights = [ (i * i) / 2.0 for i in range(1, k + 1) ]
     return BPP("BPP2", k, b, weights)
 
 
-@dataclass
 class GAParams:
-    population_size: int
-    mutation_rate_per_gene: float # same as pm in spec (easier to read)
-    tournament_size: int
-    cross_over_rate: float = 0.8
-    elitism: int = 1
-    max_evals: int = 10000
+    def __init__(
+        self,
+        population_size,
+        mutation_rate_per_gene,
+        tournament_size,
+        cross_over_rate=0.8,
+        elitism=1,
+        max_evals=10000,
+    ):
+        self.population_size = population_size
+        self.mutation_rate_per_gene = mutation_rate_per_gene
+        self.tournament_size = tournament_size
+        self.cross_over_rate = cross_over_rate
+        self.elitism = elitism
+        self.max_evals = max_evals
 
 
-@dataclass
 class TrialResult:
-    problem: str
-    population_size: int
-    mutation_rate_per_gene: float
-    tournament_size: int
-    cross_over_rate: float
-    elitism: int
-    max_evals: int
-    trial_index: int
-    seed: int
-    best_fitness: float
-    best_d: float
-    generations: int
-    evals_used: int
+    def __init__(
+        self,
+        *,
+        problem,
+        population_size,
+        mutation_rate_per_gene,
+        tournament_size,
+        cross_over_rate,
+        elitism,
+        max_evals,
+        trial_index,
+        seed,
+        best_fitness,
+        best_d,
+        generations,
+        evals_used,
+    ):
+        self.problem = problem
+        self.population_size = population_size
+        self.mutation_rate_per_gene = mutation_rate_per_gene
+        self.tournament_size = tournament_size
+        self.cross_over_rate = cross_over_rate
+        self.elitism = elitism
+        self.max_evals = max_evals
+        self.trial_index = trial_index
+        self.seed = seed
+        self.best_fitness = best_fitness
+        self.best_d = best_d
+        self.generations = generations
+        self.evals_used = evals_used
+
+    def to_dict(self):
+        # Preserve insertion order of attributes
+        return {
+            "problem": self.problem,
+            "population_size": self.population_size,
+            "mutation_rate_per_gene": self.mutation_rate_per_gene,
+            "tournament_size": self.tournament_size,
+            "cross_over_rate": self.cross_over_rate,
+            "elitism": self.elitism,
+            "max_evals": self.max_evals,
+            "trial_index": self.trial_index,
+            "seed": self.seed,
+            "best_fitness": self.best_fitness,
+            "best_d": self.best_d,
+            "generations": self.generations,
+            "evals_used": self.evals_used,
+        }
 
 
 class BinPackingGA:
-    def __init__(self, problem: BPP, params: GAParams, rng: random.Random):
+    def __init__(self, problem, params, rng):
         self.problem = problem
         self.params = params
         self.rng = rng
@@ -92,22 +130,22 @@ class BinPackingGA:
         self.weights = problem.weights
         self.evals_used = 0
 
-        self.history: Dict[str, List[float]] = {"gen": [], "best": [], "mean": []}
+        self.history = {"gen": [], "best": [], "mean": []}
 
-    def _bins_diffs(self, chrom: List[int]) -> Tuple[float, float]:
+    def _bins_diffs(self, chrom):
         sums = [0] * self.b
         for i, bin_id in enumerate(chrom):
             sums[bin_id - 1] += self.weights[i]
         return (min(sums), max(sums))
 
-    def fitness(self, chrom: List[int]) -> float:
+    def fitness(self, chrom):
         min_sum, max_sum = self._bins_diffs(chrom)
         d = max_sum - min_sum
         fit = 100.0 / (1.0 + d)
         self.evals_used += 1
         return fit
 
-    def select_tournament(self, population: List[List[int]], fitnesses: List[float]) -> List[int]:
+    def select_tournament(self, population, fitnesses):
         t = self.params.tournament_size
         best_i = None
         for _ in range(t):
@@ -116,7 +154,7 @@ class BinPackingGA:
                 best_i = i
         return population[best_i][:]
 
-    def uniform_crossover(self, p1: List[int], p2: List[int]) -> Tuple[List[int], List[int]]:
+    def uniform_crossover(self, p1, p2):
         c1 = p1[:]
         c2 = p2[:]
         if self.rng.random() < self.params.cross_over_rate:
@@ -125,20 +163,20 @@ class BinPackingGA:
                     c1[i], c2[i] = c2[i], c1[i]
         return c1, c2
 
-    def mutate(self, chrom: List[int]) -> None:
+    def mutate(self, chrom):
         mutation_rate_per_gene = self.params.mutation_rate_per_gene
         for i in range(self.k):
             if self.rng.random() < mutation_rate_per_gene:
                 chrom[i] = self.rng.randint(1, self.b)
 
-    def random_chromosome(self) -> List[int]:
-        chrom: List[int] = []
+    def random_chromosome(self):
+        chrom = []
         for _ in range(self.k):
             bin_id = self.rng.randint(1, self.b)
             chrom.append(bin_id)
         return chrom
 
-    def run(self) -> Tuple[List[int], float, float, int, int]:
+    def run(self):
         gens = 0
 
         p = self.params.population_size
@@ -176,8 +214,8 @@ class BinPackingGA:
                 elite_fits.append(fits[i])
 
 
-            new_pop: List[List[int]] = []
-            new_fit: List[float] = []
+            new_pop = []
+            new_fit = []
 
             # Generate new individuals until we fill the population (excluding elites)
             while len(new_pop) < p - n_elite and self.evals_used < max_evals:
@@ -226,14 +264,14 @@ class BinPackingGA:
         return best, best_fit, best_d, gens, self.evals_used
 
 
-def derived_seed(master_seed: int, problem_id: int, setting_id: int, trial_index: int) -> int:
+def derived_seed(master_seed, problem_id, setting_id, trial_index):
     """
     Create a derived seed from the master seed used for each trial
     """
     return master_seed + 10_000 * problem_id + 100 * setting_id + trial_index
 
 
-def plot_history(history: Dict[str, List[float]], title: str, out_path: Path, show: bool = False) -> None:
+def plot_history(history, title, out_path, show=False):
     """
     Extra function used to plot for the report
     """
@@ -258,11 +296,11 @@ def plot_history(history: Dict[str, List[float]], title: str, out_path: Path, sh
     plt.close()
 
 
-def run_experiments(master_seed: int, csv_path: str, *, plot: bool = False, plot_dir: str = "plots", show: bool = False) -> List[TrialResult]:
-    problems = [make_bpp1(), make_bpp2()]
+def run_experiments(master_seed, csv_path, *, plot=False, plot_dir="plots", show=False):
+    problems = [bpp1(), bpp2()]
 
     # Different GA parameter settings
-    settings: List[GAParams] = [
+    settings = [
         GAParams(population_size=100, mutation_rate_per_gene=0.01, tournament_size=3, cross_over_rate=0.8, elitism=1, max_evals=10_000),
         GAParams(population_size=100, mutation_rate_per_gene=0.05, tournament_size=3, cross_over_rate=0.8, elitism=1, max_evals=10_000),
         GAParams(population_size=100, mutation_rate_per_gene=0.01, tournament_size=7, cross_over_rate=0.8, elitism=1, max_evals=10_000),
@@ -270,9 +308,9 @@ def run_experiments(master_seed: int, csv_path: str, *, plot: bool = False, plot
     ]
 
     n_trials = 5
-    results: List[TrialResult] = []
+    results = []
 
-    best_by_cfg: Dict[Tuple[int, int], Tuple[float, Dict[str, List[float]], str, Path]] = {}
+    best_by_cfg = {}
 
     # Actual Experiment run
     for pid, problem in enumerate(problems):
@@ -312,12 +350,12 @@ def run_experiments(master_seed: int, csv_path: str, *, plot: bool = False, plot
                         title = f"{problem.name}, setting {sid} — best trial (seed {seed}, trial {tr})"
                         best_by_cfg[key] = (best_fit, ga.history.copy(), title, out_path)
 
-    fieldnames = list(asdict(results[0]).keys()) if results else []
+    fieldnames = list(results[0].to_dict().keys()) if results else []
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for r in results:
-            writer.writerow(asdict(r))
+            writer.writerow(r.to_dict())
 
     if plot:
         for (_pid, _sid), (_fit, hist, title, out_path) in best_by_cfg.items():
@@ -326,7 +364,7 @@ def run_experiments(master_seed: int, csv_path: str, *, plot: bool = False, plot
     return results
 
 
-def summarize(results: List[TrialResult]) -> None:
+def summarize(results):
     """
     Output to terminal the summary.
     """
@@ -334,7 +372,7 @@ def summarize(results: List[TrialResult]) -> None:
         print("No results to summarize.")
         return
 
-    groups: Dict[Tuple[str, float, int], List[TrialResult]] = defaultdict(list)
+    groups = defaultdict(list)
     for r in results:
         key = (r.problem, r.mutation_rate_per_gene, r.tournament_size)
         groups[key].append(r)
