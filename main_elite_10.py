@@ -94,14 +94,14 @@ class BinPackingGA:
 
         self.history: Dict[str, List[float]] = {"gen": [], "best": [], "mean": []}
 
-    def _bins_sums(self, chrom: List[int]) -> Tuple[float, float]:
+    def _bins_diffs(self, chrom: List[int]) -> Tuple[float, float]:
         sums = [0] * self.b
         for i, bin_id in enumerate(chrom):
             sums[bin_id - 1] += self.weights[i]
         return (min(sums), max(sums))
 
     def fitness(self, chrom: List[int]) -> float:
-        min_sum, max_sum = self._bins_sums(chrom)
+        min_sum, max_sum = self._bins_diffs(chrom)
         d = max_sum - min_sum
         fit = 100.0 / (1.0 + d)
         self.evals_used += 1
@@ -151,7 +151,7 @@ class BinPackingGA:
         best_idx = max(range(p), key=lambda i: fits[i])
         best = pop[best_idx][:]
         best_fit = fits[best_idx]
-        mn, mx = self._bins_sums(best)
+        mn, mx = self._bins_diffs(best)
         best_d = mx - mn
 
         self.history["gen"].append(0)
@@ -216,7 +216,7 @@ class BinPackingGA:
             if fits[gbest_idx] > best_fit:
                 best = pop[gbest_idx][:]
                 best_fit = fits[gbest_idx]
-                mn, mx = self._bins_sums(best)
+                mn, mx = self._bins_diffs(best)
                 best_d = mx - mn
 
             self.history["gen"].append(gens)
