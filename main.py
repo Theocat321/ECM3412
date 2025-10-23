@@ -227,6 +227,9 @@ class BinPackingGA:
 
 
 def derived_seed(master_seed: int, problem_id: int, setting_id: int, trial_index: int) -> int:
+    """
+    Create a derived seed from the master seed used for each trial
+    """
     return master_seed + 10_000 * problem_id + 100 * setting_id + trial_index
 
 
